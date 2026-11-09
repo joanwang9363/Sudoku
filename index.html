@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>長輩友善數獨遊戲</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f7f3eb; /* 溫和的米黃色背景，保護眼睛 */
+            touch-action: manipulation; /* 防止雙擊縮放 */
+        }
+
+        /* 數獨網格樣式 */
+        .sudoku-board {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 1 / 1;
+            border: 4px solid #333;
+            background-color: #fff;
+            margin: 0 auto;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .sudoku-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            font-weight: 700;
+            border: 1px solid #cbd5e1;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        /* 粗框線切割九宮格 */
+        .sudoku-cell:nth-child(3n) {
+            border-right: 3px solid #333;
+        }
+        .sudoku-cell:nth-child(9n) {
+            border-right: none;
+        }
+        .sudoku-cell:nth-child(n+19):nth-child(-n+27),
+        .sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 3px solid #333;
+        }
+
+        /* 儲存格狀態顏色 */
+        .cell-clue { color: #1e293b; } /* 預設題目數字：深灰黑 */
+        .cell-user { color: #2563eb; } /* 使用者填入數字：亮藍色 */
+        .cell-error { color: #dc2626; background-color: #fee2e2 !important; } /* 錯誤數字：紅色 */
+        
+        /* 選取與高亮狀態 */
+        .cell-selected { background-color: #fef08a !important; } /* 選取的格子：淡黃色 */
+        .cell-same-number { background-color: #bae6fd; } /* 相同的數字：淡藍色 */
+
+        /* 隱藏捲軸 */
+        ::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+
+        /* 按鈕點擊效果 */
+        .numpad-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-6 px-4">
+
+    <!-- 標題與控制區 -->
+    <div class="w-full max-w-lg mb-4 text-center">
+        <!-- JOAN 的專屬區域 -->
+        <div class="inline-block bg-pink-100 text-pink-700 text-lg font-bold py-1 px-4 rounded-full mb-3 shadow-sm">
+            💬 JOAN的碎碎念：每天動動腦，煩惱都沒了！
+        </div>
+        
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">腦力激盪・數獨</h1>
+        
+        <div class="bg-white p-4 rounded-xl shadow-md mb-4 flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center gap-2">
+                <label for="difficulty" class="text-lg font-bold text-slate-700">難度：</label>
+                <select id="difficulty" class="text-lg p-2 border-2 border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:border-blue-500">
+                    <option value="easy" selected>簡單 (暖身)</option>
+                    <option value="medium">中等 (挑戰)</option>
+                    <option value="hard">困難 (達人)</option>
+                </select>
+            </div>
+            <button onclick="startNewGame()" class="bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-2 px-6 rounded-lg shadow-sm transition-colors">
+                開新遊戲
+            </button>
+        </div>
+
+        <!-- 狀態提示訊息 -->
+        <div id="message-bar" class="text-lg font-bold text-blue-800 bg-blue-100 py-2 px-4 rounded-lg min-h-[3rem] flex items-center justify-center">
+            歡迎！請點擊下方「開新遊戲」開始。
+        </div>
+    </div>
+
+    <!-- 數獨遊戲區 -->
+    <div id="board" class="sudoku-board rounded-lg overflow-hidden">
+        <!-- Javascript 將在這裡生成 81 個格子 -->
+    </div>
+
+    <!-- 數字輸入區 (數字鍵盤) -->
+    <div class="w-full max-w-lg mt-6">
+        <div class="grid grid-cols-5 gap-3">
+            <!-- 1 到 9 按鈕 -->
+            <button onclick="inputNumber(1)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">1</button>
+            <button onclick="inputNumber(2)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">2</button>
+            <button onclick="inputNumber(3)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">3</button>
+            <button onclick="inputNumber(4)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">4</button>
+            <button onclick="inputNumber(5)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">5</button>
+            <button onclick="inputNumber(6)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">6</button>
+            <button onclick="inputNumber(7)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">7</button>
+            <button onclick="inputNumber(8)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">8</button>
+            <button onclick="inputNumber(9)" class="numpad-btn bg-white border-2 border-slate-300 rounded-xl py-3 text-3xl font-bold text-slate-800 shadow-sm hover:bg-slate-50">9</button>
+            
+            <!-- 刪除按鈕 -->
+            <button onclick="inputNumber(0)" class="numpad-btn bg-red-100 border-2 border-red-300 rounded-xl py-3 text-xl font-bold text-red-700 shadow-sm hover:bg-red-200">
+                清除<br>格子
+            </button>
+        </div>
+        
+        <!-- 提示按鈕 -->
+        <div class="mt-4 flex justify-center">
+            <button onclick="useHint()" class="bg-green-500 hover:bg-green-600 text-white text-xl font-bold py-3 px-8 rounded-full shadow-md transition-colors w-full sm:w-auto">
+                💡 幫我提示一個數字
+            </button>
+        </div>
+    </div>
+
+    <!-- 過關祝賀視窗 (預設隱藏) -->
+    <div id="victory-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 px-4">
+        <div class="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl transform scale-100 transition-transform">
+            <div class="text-6xl mb-4">🎉</div>
+            <h2 class="text-3xl font-bold text-slate-800 mb-2">太厲害了！</h2>
+            <p class="text-xl text-slate-600 mb-6">您成功解開了這個數獨！<br>腦力激盪大成功！</p>
+            <button onclick="closeVictoryModal(); startNewGame();" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold py-3 px-6 rounded-xl shadow-md">
+                再來一局
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 遊戲狀態變數
+        let puzzle = [];       // 顯示給玩家的題目 (0 代表空格)
+        let solution = [];     // 完整解答
+        let userGrid = [];     // 玩家目前的填寫狀態
+        let selectedRow = -1;
+        let selectedCol = -1;
+
+        const boardElement = document.getElementById('board');
+        const messageBar = document.getElementById('message-bar');
+
+        // ==========================================
+        // 數獨生成演算法 (Backtracking)
+        // ==========================================
+        
+        function generateSudoku(difficulty) {
+            let board = Array.from({length: 9}, () => Array(9).fill(0));
+            
+            // 1. 填滿對角線的三個 3x3 區塊 (確保隨機性)
+            fillDiagonal(board);
+            
+            // 2. 解開剩下的格子得到完整解答
+            solveSudoku(board);
+            solution = JSON.parse(JSON.stringify(board)); // 備份解答
+            
+            // 3. 根據難度挖空
+            let holes = 30; // 預設簡單
+            if (difficulty === 'medium') holes = 45;
+            if (difficulty === 'hard') holes = 55;
+            
+            userGrid = JSON.parse(JSON.stringify(board));
+            removeDigits(userGrid, holes);
+            
+            // 保存初始題目狀態以區分「題目」與「玩家輸入」
+            puzzle = JSON.parse(JSON.stringify(userGrid));
+        }
+
+        function fillDiagonal(board) {
+            for (let i = 0; i < 9; i = i + 3) {
+                fillBox(board, i, i);
+            }
+        }
+
+        function fillBox(board, rowStart, colStart) {
+            let num;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    do {
+                        num = Math.floor(Math.random() * 9) + 1;
+                    } while (!isSafeInBox(board, rowStart, colStart, num));
+                    board[rowStart + i][colStart + j] = num;
+                }
+            }
+        }
+
+        function isSafeInBox(board, rowStart, colStart, num) {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (board[rowStart + i][colStart + j] === num) return false;
+                }
+            }
+            return true;
+        }
+
+        function isSafe(board, row, col, num) {
+            // 檢查列
+            for (let x = 0; x <= 8; x++) if (board[row][x] === num) return false;
+            // 檢查行
+            for (let x = 0; x <= 8; x++) if (board[x][col] === num) return false;
+            // 檢查九宮格
+            let startRow = row - row % 3, startCol = col - col % 3;
+            for (let i = 0; i < 3; i++)
+                for (let j = 0; j < 3; j++)
+                    if (board[i + startRow][j + startCol] === num) return false;
+            return true;
+        }
+
+        function solveSudoku(board) {
+            let row = -1;
+            let col = -1;
+            let isEmpty = true;
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (board[i][j] === 0) {
+                        row = i;
+                        col = j;
+                        isEmpty = false;
+                        break;
+                    }
+                }
+                if (!isEmpty) break;
+            }
+
+            if (isEmpty) return true; // 已解完
+
+            // 加入隨機性讓每次產生的題目不同
+            let nums = [1,2,3,4,5,6,7,8,9];
+            nums.sort(() => Math.random() - 0.5);
+
+            for (let i = 0; i < 9; i++) {
+                let num = nums[i];
+                if (isSafe(board, row, col, num)) {
+                    board[row][col] = num;
+                    if (solveSudoku(board)) return true;
+                    board[row][col] = 0; // 回溯
+                }
+            }
+            return false;
+        }
+
+        function removeDigits(board, count) {
+            while (count !== 0) {
+                let cellId = Math.floor(Math.random() * 81);
+                let i = Math.floor(cellId / 9);
+                let j = cellId % 9;
+                if (board[i][j] !== 0) {
+                    count--;
+                    board[i][j] = 0;
+                }
+            }
+        }
+
+        // ==========================================
+        // UI 與互動邏輯
+        // ==========================================
+
+        function initBoardUI() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'sudoku-cell';
+                    cell.id = `cell-${r}-${c}`;
+                    cell.onclick = () => selectCell(r, c);
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function updateBoardUI() {
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.getElementById(`cell-${r}-${c}`);
+                    const val = userGrid[r][c];
+                    
+                    // 清除所有舊狀態
+                    cell.className = 'sudoku-cell';
+                    cell.innerText = val === 0 ? '' : val;
+
+                    // 判斷是題目還是玩家輸入
+                    if (puzzle[r][c] !== 0) {
+                        cell.classList.add('cell-clue');
+                    } else if (val !== 0) {
+                        cell.classList.add('cell-user');
+                        
+                        // 檢查是否有衝突 (錯誤)
+                        if (!isMoveValid(r, c, val)) {
+                            cell.classList.add('cell-error');
+                        }
+                    }
+
+                    // 處理選取與高亮邏輯
+                    if (selectedRow !== -1 && selectedCol !== -1) {
+                        const selectedVal = userGrid[selectedRow][selectedCol];
+
+                        if (r === selectedRow && c === selectedCol) {
+                            cell.classList.add('cell-selected'); // 目前選取的格子
+                        } else if (selectedVal !== 0 && val === selectedVal) {
+                            cell.classList.add('cell-same-number'); // 版面上相同的數字
+                        }
+                    }
+                }
+            }
+        }
+
+        function selectCell(r, c) {
+            selectedRow = r;
+            selectedCol = c;
+            updateBoardUI();
+            setMessage("請點擊下方數字填入格子。");
+        }
+
+        function inputNumber(num) {
+            if (selectedRow === -1 || selectedCol === -1) {
+                setMessage("請先點選上面的一個空格喔！", true);
+                return;
+            }
+
+            // 如果該格是原本的題目，不允許修改
+            if (puzzle[selectedRow][selectedCol] !== 0) {
+                setMessage("黑色的數字是題目，不能修改喔！", true);
+                return;
+            }
+
+            // 填入或清除 (num=0 代表清除)
+            userGrid[selectedRow][selectedCol] = num;
+            
+            updateBoardUI();
+            
+            if (num !== 0) {
+                // 檢查是否過關
+                checkWinCondition();
+            } else {
+                setMessage("已清除該格。");
+            }
+        }
+
+        function useHint() {
+            if (selectedRow === -1 || selectedCol === -1) {
+                setMessage("請先點選您想要提示的空格！", true);
+                return;
+            }
+            if (puzzle[selectedRow][selectedCol] !== 0) {
+                setMessage("這個已經是題目囉，請選空格。", true);
+                return;
+            }
+
+            const correctAns = solution[selectedRow][selectedCol];
+            userGrid[selectedRow][selectedCol] = correctAns;
+            updateBoardUI();
+            setMessage(`已幫您填入正確數字 ${correctAns}！`);
+            checkWinCondition();
+        }
+
+        // 檢查填入的數字是否與當前版面衝突 (不包含自己)
+        function isMoveValid(r, c, num) {
+            for (let i = 0; i < 9; i++) {
+                if (i !== c && userGrid[r][i] === num) return false;
+                if (i !== r && userGrid[i][c] === num) return false;
+            }
+            let startRow = r - r % 3, startCol = c - c % 3;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    let currR = i + startRow;
+                    let currC = j + startCol;
+                    if ((currR !== r || currC !== c) && userGrid[currR][currC] === num) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function checkWinCondition() {
+            let isComplete = true;
+            let isCorrect = true;
+
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    if (userGrid[r][c] === 0) {
+                        isComplete = false;
+                    } else if (userGrid[r][c] !== solution[r][c]) {
+                        isCorrect = false;
+                    }
+                }
+            }
+
+            if (isComplete) {
+                if (isCorrect) {
+                    showVictoryModal();
+                } else {
+                    setMessage("格子都填滿了，但好像有地方填錯了，檢查看看紅色的數字喔！", true);
+                }
+            } else {
+                setMessage("繼續加油！");
+            }
+        }
+
+        // ==========================================
+        // 系統訊息與流程控制
+        // ==========================================
+
+        function setMessage(msg, isWarning = false) {
+            messageBar.innerText = msg;
+            if (isWarning) {
+                messageBar.className = "text-lg font-bold text-red-800 bg-red-100 py-2 px-4 rounded-lg min-h-[3rem] flex items-center justify-center transition-colors";
+            } else {
+                messageBar.className = "text-lg font-bold text-blue-800 bg-blue-100 py-2 px-4 rounded-lg min-h-[3rem] flex items-center justify-center transition-colors";
+            }
+        }
+
+        function startNewGame() {
+            const diff = document.getElementById('difficulty').value;
+            generateSudoku(diff);
+            selectedRow = -1;
+            selectedCol = -1;
+            updateBoardUI();
+            setMessage("新遊戲已開始，請點擊任一空格開始作答！");
+        }
+
+        function showVictoryModal() {
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        function closeVictoryModal() {
+            document.getElementById('victory-modal').classList.add('hidden');
+        }
+
+        // 初始化頁面
+        window.onload = () => {
+            initBoardUI();
+            startNewGame();
+        };
+    </script>
+</body>
+</html>
